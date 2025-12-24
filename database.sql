@@ -1,6 +1,6 @@
-CREATE DATABASE IF NOT EXISTS phporder CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-USE phporder;
+-- 数据库将通过安装程序自动创建和选择
+-- CREATE DATABASE IF NOT EXISTS [数据库名] CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+-- USE [数据库名];
 
 -- 产品表
 CREATE TABLE IF NOT EXISTS products (
