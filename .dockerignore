@@ -1,0 +1,16 @@
+.git
+.gitignore
+README.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+node_modules
+.npm
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.local
+.env.production
+public/images/*
+!public/images/.gitkeep

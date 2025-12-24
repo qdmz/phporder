@@ -1,0 +1,61 @@
+# 开启URL重写
+RewriteEngine On
+
+# 设置默认首页
+DirectoryIndex index.php
+
+# 如果请求的文件不存在，则重定向到index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# 安全设置
+# 阻止访问敏感文件
+<FilesMatch "\.(htaccess|htpasswd|ini|log|sh|sql|bak|backup|old)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# 阻止访问配置目录
+<Directory "config">
+    Order Allow,Deny
+    Deny from all
+</Directory>
+
+# 阻止访问includes目录
+<Directory "includes">
+    Order Allow,Deny
+    Deny from all
+</Directory>
+
+# 设置PHP错误显示
+php_flag display_errors off
+php_value error_log logs/php_errors.log
+
+# 设置上传文件大小限制
+php_value upload_max_filesize 5M
+php_value post_max_size 8M
+
+# 开启GZIP压缩
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+</IfModule>
+
+# 设置缓存过期时间
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+</IfModule>

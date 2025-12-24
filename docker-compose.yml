@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # Apache + PHP服务
+  web:
+    build: .
+    container_name: phporder-web
+    ports:
+      - "8080:80"
+    volumes:
+      - ./public/images:/var/www/html/public/images
+      - ./config:/var/www/html/config
+    environment:
+      - APACHE_DOCUMENT_ROOT=/var/www/html/public
+    depends_on:
+      - db
+    networks:
+      - phporder-network
+
+  # MySQL数据库服务
+  db:
+    image: mysql:8.0
+    container_name: phporder-db
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: phporder
+      MYSQL_USER: phporder
+      MYSQL_PASSWORD: phporder123
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database.sql:/docker-entrypoint-initdb.d/database.sql
+    networks:
+      - phporder-network
+
+  # phpMyAdmin管理界面
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phporder-phpmyadmin
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: root123456
+    depends_on:
+      - db
+    networks:
+      - phporder-network
+
+volumes:
+  mysql_data:
+
+networks:
+  phporder-network:
+    driver: bridge

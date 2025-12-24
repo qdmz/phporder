@@ -1,0 +1,17 @@
+# 图片占位符说明
+
+这是一个图片占位符说明文件。
+实际部署时，建议在此处放置一张默认的"无图片"图片，
+尺寸建议为 300x200 像素，格式为 JPG。
+
+可以使用以下CSS来处理图片加载失败的情况：
+```css
+.product-image {
+    background: #f8f9fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+```
