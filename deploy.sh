@@ -51,8 +51,8 @@ fi
 
 # 使用wget下载或git clone
 if command -v git &> /dev/null; then
-    git clone https://github.com/qdmz/chaxun.git
-    cd chaxun
+    git clone https://github.com/qdmz/phporder.git
+    cd phporder
 else
     echo "Git未安装，请手动上传项目文件到 $PROJECT_DIR"
     exit 1
