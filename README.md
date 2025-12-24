@@ -50,8 +50,8 @@
 
 1. **克隆项目**
 ```bash
-git clone https://github.com/qdmz/chaxun.git
-cd chaxun
+git clone https://github.com/qdmz/phporder.git
+cd phporder
 ```
 
 2. **启动服务**
@@ -68,8 +68,8 @@ docker-compose up -d
 
 1. **下载源码**
 ```bash
-git clone https://github.com/qdmz/chaxun.git
-cd chaxun
+git clone https://github.com/qdmz/phporder.git
+cd phporder
 ```
 
 2. **配置数据库**
