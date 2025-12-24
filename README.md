@@ -97,8 +97,8 @@ chmod -R 777 public/images/
 **Apache配置示例:**
 ```apache
 <VirtualHost *:80>
-    DocumentRoot /path/to/chaxun/public
-    <Directory /path/to/chaxun/public>
+    DocumentRoot /path/to/phporder/public
+    <Directory /path/to/phporder/public>
         AllowOverride All
         Require all granted
     </Directory>
@@ -110,7 +110,7 @@ chmod -R 777 public/images/
 server {
     listen 80;
     server_name your-domain.com;
-    root /path/to/chaxun/public;
+    root /path/to/phporder/public;
     index index.php;
 
     location / {
@@ -341,8 +341,8 @@ ini_set('display_errors', 1);
 如果您在使用过程中遇到问题，可以通过以下方式获取帮助：
 
 - 📧 Email: admin@example.com
-- 🐛 GitHub Issues: https://github.com/qdmz/chaxun/issues
-- 📖 文档: https://github.com/qdmz/chaxun/wiki
+- 🐛 GitHub Issues: https://github.com/qdmz/phporder/issues
+- 📖 文档: https://github.com/qdmz/chaxunphporder/wiki
 
 ## 致谢
 
