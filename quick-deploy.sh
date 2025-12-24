@@ -2,9 +2,9 @@
 
 # 快速部署脚本 - 通过SSH在远程服务器上执行一键部署
 
-SERVER_IP="42.194.226.146"
+SERVER_IP=""
 SERVER_USER="root"
-SERVER_PASS="Thanks12A#"
+SERVER_PASS=""
 
 echo "=========================================="
 echo "快速部署到远程服务器"
@@ -47,12 +47,12 @@ mkdir -p /opt/phporder
 cd /opt/phporder
 
 # 下载项目
-if [ -d "chaxun" ]; then
-    rm -rf chaxun
+if [ -d "phporder" ]; then
+    rm -rf phporder
 fi
 
-git clone https://github.com/qdmz/chaxun.git
-cd chaxun
+git clone https://github.com/qdmz/phporder.git
+cd phporder
 
 # 设置权限
 chmod -R 755 .
