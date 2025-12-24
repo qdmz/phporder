@@ -87,9 +87,17 @@ function checkRequirements() {
 // 数据库连接测试
 function testDatabaseConnection($host, $dbname, $username, $password) {
     try {
-        $dsn = "mysql:host=$host;dbname=$dbname;charset=utf8mb4";
+        // 先测试MySQL服务器连接
+        $dsn = "mysql:host=$host;charset=utf8mb4";
         $pdo = new PDO($dsn, $username, $password);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+        // 检查是否有创建数据库的权限
+        $pdo->exec("CREATE DATABASE IF NOT EXISTS `$dbname` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        
+        // 测试连接到指定数据库
+        $pdo->exec("USE `$dbname`");
+        
         return ['success' => true, 'message' => '数据库连接成功！'];
     } catch (PDOException $e) {
         return ['success' => false, 'message' => '数据库连接失败：' . $e->getMessage()];
@@ -129,9 +137,16 @@ function createDatabaseConfig($host, $dbname, $username, $password) {
 // 执行数据库导入
 function importDatabase($host, $dbname, $username, $password) {
     try {
-        $dsn = "mysql:host=$host;dbname=$dbname;charset=utf8mb4";
+        // 先连接到MySQL服务器（不指定数据库）
+        $dsn = "mysql:host=$host;charset=utf8mb4";
         $pdo = new PDO($dsn, $username, $password);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+        // 创建数据库（如果不存在）
+        $pdo->exec("CREATE DATABASE IF NOT EXISTS `$dbname` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        
+        // 连接到指定数据库
+        $pdo->exec("USE `$dbname`");
         
         // 读取SQL文件
         $sql_file = 'database.sql';
@@ -141,14 +156,16 @@ function importDatabase($host, $dbname, $username, $password) {
         
         $sql = file_get_contents($sql_file);
         
-        // 移除注释和分割语句
+        // 移除注释和分割语句，同时移除CREATE DATABASE和USE语句
         $sql = preg_replace('/--.*$/m', '', $sql);
+        $sql = preg_replace('/^CREATE DATABASE.*?$/mi', '', $sql);
+        $sql = preg_replace('/^USE.*?$/mi', '', $sql);
         $statements = array_filter(array_map('trim', explode(';', $sql)));
         
         $pdo->beginTransaction();
         
         foreach ($statements as $statement) {
-            if (!empty($statement)) {
+            if (!empty($statement) && !preg_match('/^(CREATE DATABASE|USE)/i', $statement)) {
                 $pdo->exec($statement);
             }
         }
@@ -157,7 +174,9 @@ function importDatabase($host, $dbname, $username, $password) {
         return ['success' => true, 'message' => '数据库导入成功！'];
         
     } catch (PDOException $e) {
-        $pdo->rollBack();
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         return ['success' => false, 'message' => '数据库导入失败：' . $e->getMessage()];
     }
 }
