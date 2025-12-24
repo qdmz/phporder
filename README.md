@@ -342,7 +342,7 @@ ini_set('display_errors', 1);
 
 - 📧 Email: admin@example.com
 - 🐛 GitHub Issues: https://github.com/qdmz/phporder/issues
-- 📖 文档: https://github.com/qdmz/chaxunphporder/wiki
+- 📖 文档: https://github.com/qdmz/phporder/wiki
 
 ## 致谢
 
