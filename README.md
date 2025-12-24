@@ -158,7 +158,7 @@ PHP版本检查（要求7.4+）
 清晰的错误提示
 步骤导航
 使用方法
-将整个项目上传到web服务器
+将整个项目上传到web服务器,修改database.sql 注释掉第一行 CREATE DATABASE IF NOT EXISTS phporder CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 访问 http://yourdomain.com/install.php
 按照向导步骤完成安装
 安装完成后删除或重命名install.php文件
