@@ -21,7 +21,7 @@ ssh root@42.194.226.146
 
 ```bash
 # 下载项目部署脚本
-wget https://raw.githubusercontent.com/qdmz/chaxun/main/deploy.sh
+wget https://raw.githubusercontent.com/qdmz/phporder/main/deploy.sh
 chmod +x deploy.sh
 
 # 运行自动部署脚本
@@ -66,8 +66,8 @@ mkdir -p /opt/phporder
 cd /opt/phporder
 
 # 克隆项目代码
-git clone https://github.com/qdmz/chaxun.git
-cd chaxun
+git clone https://github.com/qdmz/phporder.git
+cd phporder
 ```
 
 ### 3. 配置和启动服务
@@ -377,7 +377,7 @@ tar -xzf images_backup.tar.gz
 
 如果在部署过程中遇到问题，请通过以下方式获取帮助：
 
-- GitHub Issues: https://github.com/qdmz/chaxun/issues
+- GitHub Issues: https://github.com/qdmz/phporder/issues
 - Email: admin@example.com
 
 ---
