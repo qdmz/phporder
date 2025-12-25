@@ -1033,14 +1033,11 @@ function getRealtimeData($db) {
                     data: sales,
                     backgroundColor: 'rgba(54, 162, 235, 0.1)',
                     borderColor: 'rgba(54, 162, 235, 1)',
-                    borderWidth: 3,
+                    borderWidth: 2,
                     fill: true,
-                    tension: 0.4,
-                    pointBackgroundColor: 'rgba(54, 162, 235, 1)',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
-                    pointRadius: 6,
-                    pointHoverRadius: 8
+                    tension: 0.1, // 降低曲线平滑度以提高性能
+                    pointRadius: 0, // 隐藏点以提高性能
+                    pointHoverRadius: 0
                 }]
             },
             options: {
@@ -1076,15 +1073,26 @@ function getRealtimeData($db) {
                                     minimumFractionDigits: 0,
                                     maximumFractionDigits: 0
                                 });
-                            }
+                            },
+                            maxTicksLimit: 6 // 限制刻度数量以提高性能
                         }
                     },
                     x: {
                         grid: {
                             color: 'rgba(0, 0, 0, 0.05)'
+                        },
+                        ticks: {
+                            maxTicksLimit: 10 // 限制刻度数量以提高性能
                         }
                     }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
                 }
+            },
+            animation: {
+                duration: 0 // 禁用动画
             }
         });
     }
@@ -1112,7 +1120,9 @@ function getRealtimeData($db) {
                 legend: {
                     position: 'right',
                     labels: {
-                        padding: 20
+                        padding: 10, // 减少标签间距
+                        pointStyle: 'circle',
+                        usePointStyle: true
                     }
                 },
                 tooltip: {
@@ -1129,8 +1139,19 @@ function getRealtimeData($db) {
                         }
                     }
                 }
+            },
+            cutout: '65%', // 减小中心空白以提高性能
+            animation: {
+                animateRotate: false, // 禁用旋转动画
+                animateScale: false  // 禁用缩放动画
             }
-        }
+        },
+        plugins: [{
+            afterInit: function(chart) {
+                // 禁用动画
+                chart.options.animation = false;
+            }
+        }]
     });
     
     // 订单状态图表
@@ -1154,7 +1175,7 @@ function getRealtimeData($db) {
                 legend: {
                     position: 'right',
                     labels: {
-                        padding: 20
+                        padding: 10
                     }
                 },
                 tooltip: {
@@ -1168,8 +1189,18 @@ function getRealtimeData($db) {
                         }
                     }
                 }
+            },
+            animation: {
+                animateRotate: false, // 禁用旋转动画
+                animateScale: false  // 禁用缩放动画
             }
-        }
+        },
+        plugins: [{
+            afterInit: function(chart) {
+                // 禁用动画
+                chart.options.animation = false;
+            }
+        }]
     });
     
     // 库存状况图表
@@ -1188,7 +1219,7 @@ function getRealtimeData($db) {
                     '#dc3545', '#ffc107', '#28a745', '#667eea'
                 ],
                 borderWidth: 1,
-                borderRadius: 6
+                borderRadius: 4 // 减小圆角以提高性能
             }]
         },
         options: {
@@ -1203,11 +1234,26 @@ function getRealtimeData($db) {
                 y: {
                     beginAtZero: true,
                     ticks: {
-                        stepSize: 1
+                        stepSize: 1,
+                        maxTicksLimit: 6 // 限制刻度数量以提高性能
+                    }
+                },
+                x: {
+                    ticks: {
+                        maxTicksLimit: 5 // 限制刻度数量以提高性能
                     }
                 }
+            },
+            animation: {
+                duration: 0 // 禁用所有动画
             }
-        }
+        },
+        plugins: [{
+            afterInit: function(chart) {
+                // 禁用动画
+                chart.options.animation = false;
+            }
+        }]
     });
     
     // 初始化销售趋势图表
