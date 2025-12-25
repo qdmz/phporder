@@ -9,7 +9,13 @@ services:
       - "8080:80"
     volumes:
       - ./public/images:/var/www/html/public/images
-      - ./config:/var/www/html/config
+      # 只映射特定配置文件，而不是整个config目录
+      - ./config/config.php:/var/www/html/config/config.php
+      - ./config/database.php:/var/www/html/config/database.php
+      # 映射uploads目录以支持文件上传
+      - ./uploads:/var/www/html/uploads
+      # 映射日志目录
+      - ./logs:/var/www/html/logs
     environment:
       - APACHE_DOCUMENT_ROOT=/var/www/html/public
     depends_on:
@@ -33,6 +39,12 @@ services:
       - ./database.sql:/docker-entrypoint-initdb.d/database.sql
     networks:
       - phporder-network
+    command: [
+      '--default-authentication-plugin=mysql_native_password',
+      '--character-set-server=utf8mb4',
+      '--collation-server=utf8mb4_unicode_ci',
+      '--max-connections=1000'
+    ]
 
   # phpMyAdmin管理界面
   phpmyadmin:
@@ -45,6 +57,7 @@ services:
       PMA_PORT: 3306
       PMA_USER: root
       PMA_PASSWORD: root123456
+      PMA_ARBITRARY: 1
     depends_on:
       - db
     networks:
@@ -52,6 +65,7 @@ services:
 
 volumes:
   mysql_data:
+    driver: local
 
 networks:
   phporder-network:
