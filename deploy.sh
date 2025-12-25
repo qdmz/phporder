@@ -105,7 +105,7 @@ echo "=========================================="
 # 创建管理脚本
 cat > /opt/phporder/manage.sh << 'EOF'
 #!/bin/bash
-cd /opt/phporder/chaxun
+cd /opt/phporder/phporder
 case "$1" in
     start)
         docker-compose up -d
