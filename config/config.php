@@ -20,5 +20,5 @@ ini_set('display_errors', 1);
 
 // 包含必要的文件
 require_once 'database.php';
-require_once 'functions.php';
+require_once '../includes/functions.php';
 ?>
