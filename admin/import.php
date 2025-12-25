@@ -294,7 +294,8 @@ function importProducts($db, $handle, $hasHeader, &$totalRows, &$skipCount, &$er
     
     return $successCount;
 }
-    <style>
+?>
+<style>
         .import-container {
             max-width: 1000px;
             margin: 0 auto;
