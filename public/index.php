@@ -302,6 +302,33 @@ require_once '../config/config.php';
         .cart-item:last-child {
             border-bottom: none;
         }
+        
+        .quantity-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .quantity-input {
+            width: 60px;
+            text-align: center;
+            padding: 0.25rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .quantity-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .quantity-btn:hover {
+            background: #5a6268;
+        }
     </style>
 </head>
 <body>
@@ -321,7 +348,7 @@ require_once '../config/config.php';
                 <li><a href="#" onclick="showCartModal(); return false;">
                     购物车 (<span id="cartCount">0</span>)
                 </a></li>
-                <li><a href="../admin/login.php">后台管理</a></li>
+                <li><a href="../admin/">后台管理</a></li>
             </ul>
         </div>
     </nav>
@@ -657,7 +684,12 @@ require_once '../config/config.php';
                                 <div>
                                     <h4>${item.name}</h4>
                                     <p>单价: ¥${item.price.toFixed(2)}</p>
-                                    <p>数量: ${item.quantity}</p>
+                                    <div class="quantity-control">
+                                        <span>数量: </span>
+                                        <button class="quantity-btn" onclick="updateQuantity(${index}, -1)">-</button>
+                                        <input type="number" value="${item.quantity}" min="1" max="999" class="quantity-input" onchange="updateQuantityInput(${index}, this.value)">
+                                        <button class="quantity-btn" onclick="updateQuantity(${index}, 1)">+</button>
+                                    </div>
                                     <p>小计: ¥${subtotal.toFixed(2)}</p>
                                 </div>
                                 <button class="btn" style="background: #dc3545;" onclick="removeFromCart(${index})">移除</button>
@@ -683,6 +715,31 @@ require_once '../config/config.php';
             shoppingCart.splice(index, 1);
             updateCartDisplay();
             showCartModal(); // 刷新显示
+        }
+        
+        // 更新购物车中商品数量
+        function updateQuantity(index, change) {
+            const item = shoppingCart[index];
+            const newQuantity = item.quantity + change;
+            
+            // 确保数量在合理范围内
+            if (newQuantity >= 1) {
+                item.quantity = newQuantity;
+                updateCartDisplay();
+                showCartModal(); // 刷新显示
+            }
+        }
+        
+        // 通过输入框更新购物车中商品数量
+        function updateQuantityInput(index, value) {
+            const item = shoppingCart[index];
+            const newQuantity = parseInt(value);
+            
+            if (!isNaN(newQuantity) && newQuantity >= 1) {
+                item.quantity = newQuantity;
+                updateCartDisplay();
+                showCartModal(); // 刷新显示
+            }
         }
 
         // 隐藏购物车模态框
