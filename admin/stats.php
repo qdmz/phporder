@@ -16,26 +16,15 @@ if (isset($_GET['end_date']) && !empty($_GET['end_date'])) {
     $end_date = $_GET['end_date'];
 }
 
-// 获取所有统计数据
+// 获取所有统计数据（一次性获取，无刷新）
 try {
-    // 1. 核心指标
+    // 一次性获取所有需要的数据，减少数据库查询
     $coreMetrics = getCoreMetrics($db, $start_date, $end_date);
-    
-    // 2. 销售数据
     $salesData = getSalesData($db, $start_date, $end_date);
-    
-    // 3. 产品数据
     $productData = getProductData($db, $start_date, $end_date);
-    
-    // 4. 订单数据
     $orderData = getOrderData($db, $start_date, $end_date);
-    
-    // 5. 客户数据
     $customerData = getCustomerData($db, $start_date, $end_date);
-    
-    // 6. 实时数据
     $realtimeData = getRealtimeData($db);
-    
 } catch (PDOException $e) {
     $error = '获取统计数据失败：' . $e->getMessage();
 }
@@ -46,42 +35,26 @@ try {
 function getCoreMetrics($db, $start_date, $end_date) {
     $metrics = [];
     
-    // 总销售额
-    $sql = "SELECT COALESCE(SUM(total_amount), 0) as total_sales 
-            FROM orders 
-            WHERE DATE(created_at) BETWEEN ? AND ? 
-            AND status != 'cancelled'";
+    // 使用单个查询获取所有核心指标
+    $sql = "
+        SELECT 
+            COALESCE(SUM(CASE WHEN o.status != 'cancelled' THEN o.total_amount ELSE 0 END), 0) as total_sales,
+            COUNT(DISTINCT o.id) as total_orders,
+            (SELECT COUNT(*) FROM products) as total_products,
+            COUNT(DISTINCT CASE WHEN o.customer_email != '' THEN o.customer_email END) as total_customers,
+            CASE WHEN COUNT(DISTINCT o.id) > 0 THEN 
+                ROUND(SUM(CASE WHEN o.status != 'cancelled' THEN o.total_amount ELSE 0 END) / COUNT(DISTINCT o.id), 2)
+            ELSE 0 END as avg_order_value
+        FROM orders o
+        WHERE DATE(o.created_at) BETWEEN ? AND ?";
+    
     $stmt = $db->prepare($sql);
     $stmt->execute([$start_date, $end_date]);
-    $metrics['total_sales'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_sales'];
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    // 订单总数
-    $sql = "SELECT COUNT(*) as total_orders 
-            FROM orders 
-            WHERE DATE(created_at) BETWEEN ? AND ?";
-    $stmt = $db->prepare($sql);
-    $stmt->execute([$start_date, $end_date]);
-    $metrics['total_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_orders'];
+    $metrics = $result;
     
-    // 产品总数
-    $sql = "SELECT COUNT(*) as total_products FROM products";
-    $stmt = $db->query($sql);
-    $metrics['total_products'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_products'];
-    
-    // 客户总数（基于邮箱）
-    $sql = "SELECT COUNT(DISTINCT customer_email) as total_customers 
-            FROM orders 
-            WHERE DATE(created_at) BETWEEN ? AND ? 
-            AND customer_email != ''";
-    $stmt = $db->prepare($sql);
-    $stmt->execute([$start_date, $end_date]);
-    $metrics['total_customers'] = $stmt->fetch(PDO::FETCH_ASSOC)['total_customers'];
-    
-    // 平均订单价值
-    $metrics['avg_order_value'] = $metrics['total_orders'] > 0 ? 
-        round($metrics['total_sales'] / $metrics['total_orders'], 2) : 0;
-    
-    // 今日数据
+    // 获取今日数据
     $today = date('Y-m-d');
     $sql = "SELECT 
                 COUNT(*) as today_orders,
@@ -97,6 +70,7 @@ function getCoreMetrics($db, $start_date, $end_date) {
     
     return $metrics;
 }
+
 /**
  * 获取销售数据
  */
@@ -117,24 +91,40 @@ function getSalesData($db, $start_date, $end_date) {
     $stmt->execute([$start_date, $end_date]);
     $data['monthly_trend'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // 每日销售趋势（最近30天）
+    // 每日销售趋势
+    $sql = "SELECT 
+                DATE(created_at) as date,
+                COALESCE(SUM(total_amount), 0) as sales
+            FROM orders 
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            AND status != 'cancelled'
+            GROUP BY DATE(created_at)
+            ORDER BY DATE(created_at)";
+    $stmt = $db->prepare($sql);
+    $stmt->execute([$start_date, $end_date]);
+    $daily_results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // 将结果转换为日期索引数组
     $dailyTrend = [];
-    for ($i = 29; $i >= 0; $i--) {
-        $date = date('Y-m-d', strtotime("-$i days"));
-        $sql = "SELECT 
-                    COALESCE(SUM(total_amount), 0) as sales
-                FROM orders 
-                WHERE DATE(created_at) = ?
-                AND status != 'cancelled'";
-        $stmt = $db->prepare($sql);
-        $stmt->execute([$date]);
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        $dailyTrend[$date] = $result['sales'];
+    foreach ($daily_results as $row) {
+        $dailyTrend[$row['date']] = $row['sales'];
     }
-    $data['daily_trend'] = $dailyTrend;
+    
+    // 确保日期范围内所有日期都有数据
+    $date_range = [];
+    $current = new DateTime($start_date);
+    $end = new DateTime($end_date);
+    while ($current <= $end) {
+        $date = $current->format('Y-m-d');
+        $date_range[$date] = $dailyTrend[$date] ?? 0;
+        $current->modify('+1 day');
+    }
+    
+    $data['daily_trend'] = $date_range;
     
     return $data;
 }
+
 /**
  * 获取产品数据
  */
@@ -193,6 +183,7 @@ function getProductData($db, $start_date, $end_date) {
     
     return $data;
 }
+
 /**
  * 获取订单数据
  */
@@ -273,18 +264,18 @@ function getCustomerData($db, $start_date, $end_date) {
     $sql = "SELECT 
                 DATE(created_at) as date,
                 COUNT(DISTINCT customer_email) as new_customers
-            FROM orders 
-            WHERE DATE(created_at) BETWEEN ? AND ?
-            AND customer_email != ''
-            AND customer_email NOT IN (
-                SELECT DISTINCT customer_email 
-                FROM orders 
-                WHERE DATE(created_at) < DATE(created_at)
+            FROM orders o1
+            WHERE DATE(o1.created_at) BETWEEN ? AND ?
+            AND o1.customer_email != ''
+            AND NOT EXISTS (
+                SELECT 1 FROM orders o2 
+                WHERE o2.customer_email = o1.customer_email 
+                AND DATE(o2.created_at) < ?
             )
-            GROUP BY DATE(created_at)
+            GROUP BY DATE(o1.created_at)
             ORDER BY date";
     $stmt = $db->prepare($sql);
-    $stmt->execute([$start_date, $end_date]);
+    $stmt->execute([$start_date, $end_date, $start_date]);
     $data['new_customers'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // 客户地域分布（基于电话区号）
@@ -305,55 +296,45 @@ function getCustomerData($db, $start_date, $end_date) {
     
     return $data;
 }
+
 /**
- * 获取实时数据
+ * 获取实时数据（实际上是一次性数据，无刷新）
  */
 function getRealtimeData($db) {
     $data = [];
     
-    // 实时订单统计（最近1小时）
-    $oneHourAgo = date('Y-m-d H:i:s', strtotime('-1 hour'));
-    $sql = "SELECT 
-                COUNT(*) as orders_last_hour,
-                COALESCE(SUM(total_amount), 0) as sales_last_hour
-            FROM orders 
-            WHERE created_at >= ?";
-    $stmt = $db->prepare($sql);
-    $stmt->execute([$oneHourAgo]);
-    $data['realtime_orders'] = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    // 待处理订单
-    $sql = "SELECT COUNT(*) as pending_orders FROM orders WHERE status = 'pending'";
+    // 使用单个查询获取数据
+    $sql = "
+        SELECT 
+            (SELECT COUNT(*) FROM orders WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)) as orders_last_hour,
+            (SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)) as sales_last_hour,
+            (SELECT COUNT(*) FROM orders WHERE status = 'pending') as pending_orders,
+            (SELECT COUNT(*) FROM products WHERE stock_quantity < 10) as low_stock,
+            (SELECT COUNT(DISTINCT customer_email) FROM orders WHERE DATE(created_at) = CURDATE() AND customer_email != '') as today_customers
+    ";
     $stmt = $db->query($sql);
-    $data['pending_orders'] = $stmt->fetch(PDO::FETCH_ASSOC)['pending_orders'];
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    // 低库存产品
-    $sql = "SELECT COUNT(*) as low_stock FROM products WHERE stock_quantity < 10";
-    $stmt = $db->query($sql);
-    $data['low_stock'] = $stmt->fetch(PDO::FETCH_ASSOC)['low_stock'];
-    
-    // 今日活跃客户
-    $today = date('Y-m-d');
-    $sql = "SELECT COUNT(DISTINCT customer_email) as today_customers 
-            FROM orders 
-            WHERE DATE(created_at) = ?
-            AND customer_email != ''";
-    $stmt = $db->prepare($sql);
-    $stmt->execute([$today]);
-    $data['today_customers'] = $stmt->fetch(PDO::FETCH_ASSOC)['today_customers'];
+    $data['realtime_orders'] = [
+        'orders_last_hour' => $result['orders_last_hour'],
+        'sales_last_hour' => $result['sales_last_hour']
+    ];
+    $data['pending_orders'] = $result['pending_orders'];
+    $data['low_stock'] = $result['low_stock'];
+    $data['today_customers'] = $result['today_customers'];
     
     return $data;
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据统计大屏 - <?php echo SITE_NAME; ?></title>
+    <title>数据统计 - <?php echo SITE_NAME; ?></title>
     <link rel="stylesheet" href="../assets/css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
     <style>
         .dashboard-container {
             padding: 1rem;
@@ -433,6 +414,11 @@ function getRealtimeData($db) {
             position: relative;
             overflow: hidden;
             border-left: 6px solid #667eea;
+            transition: transform 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
         }
         
         .metric-card:nth-child(2) {
@@ -663,6 +649,7 @@ function getRealtimeData($db) {
         
         .realtime-widget:hover {
             transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.12);
         }
         
         .realtime-icon {
@@ -721,50 +708,6 @@ function getRealtimeData($db) {
                 grid-template-columns: 1fr;
             }
         }
-        
-        /* 动画效果 */
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
-        }
-        
-        .metric-card:hover {
-            animation: pulse 0.5s ease;
-        }
-        
-        /* 打印样式 */
-        @media print {
-            .stats-header,
-            .time-selector,
-            .realtime-widgets {
-                display: none;
-            }
-        }
-        
-        /* 深色模式支持 */
-        @media (prefers-color-scheme: dark) {
-            .metric-card,
-            .chart-container,
-            .table-container,
-            .realtime-widget {
-                background: #1e1e1e;
-                color: #ffffff;
-            }
-            
-            .metric-value {
-                color: #ffffff;
-            }
-            
-            .table th {
-                background: #2d2d2d;
-                color: #ffffff;
-            }
-            
-            .table tr:hover td {
-                background: #2d2d2d;
-            }
-        }
     </style>
 </head>
 <body>
@@ -793,7 +736,7 @@ function getRealtimeData($db) {
                 <div class="stats-header">
                     <div class="header-title">
                         <span class="icon">📊</span>
-                        <span>数据统计大屏</span>
+                        <span>数据统计</span>
                     </div>
                     
                     <form method="GET" class="time-selector">
@@ -831,118 +774,121 @@ function getRealtimeData($db) {
                         <div class="realtime-label">低库存产品</div>
                     </div>
                 </div>
-<!-- 核心指标 -->
-<div class="core-metrics">
-    <div class="metric-card">
-        <div class="metric-icon">💰</div>
-        <div class="metric-content">
-            <div class="metric-value">¥<?php echo number_format($coreMetrics['total_sales'] ?? 0, 2); ?></div>
-            <div class="metric-label">总销售额</div>
-            <div class="metric-change positive">
-                <span>↑</span>
-                <span>今日：¥<?php echo number_format($coreMetrics['today_sales'] ?? 0, 2); ?></span>
-            </div>
-        </div>
-    </div>
-    
-    <div class="metric-card">
-        <div class="metric-icon">📦</div>
-        <div class="metric-content">
-            <div class="metric-value"><?php echo number_format($coreMetrics['total_orders'] ?? 0); ?></div>
-            <div class="metric-label">总订单数</div>
-            <div class="metric-change positive">
-                <span>↑</span>
-                <span>今日：<?php echo number_format($coreMetrics['today_orders'] ?? 0); ?></span>
-            </div>
-        </div>
-    </div>
-    
-    <div class="metric-card">
-        <div class="metric-icon">🏷️</div>
-        <div class="metric-content">
-            <div class="metric-value"><?php echo number_format($coreMetrics['total_products'] ?? 0); ?></div>
-            <div class="metric-label">产品总数</div>
-        </div>
-    </div>
-    
-    <div class="metric-card">
-        <div class="metric-icon">👥</div>
-        <div class="metric-content">
-            <div class="metric-value"><?php echo number_format($coreMetrics['total_customers'] ?? 0); ?></div>
-            <div class="metric-label">客户总数</div>
-            <div class="metric-change positive">
-                <span>↑</span>
-                <span>今日：<?php echo $realtimeData['today_customers'] ?? 0; ?></span>
-            </div>
-        </div>
-    </div>
-    
-    <div class="metric-card">
-        <div class="metric-icon">📊</div>
-        <div class="metric-content">
-            <div class="metric-value">¥<?php echo number_format($coreMetrics['avg_order_value'] ?? 0, 2); ?></div>
-            <div class="metric-label">平均订单价值</div>
-        </div>
-    </div>
-    
-    <div class="metric-card">
-        <div class="metric-icon">🎯</div>
-        <div class="metric-content">
-            <div class="metric-value"><?php echo count($productData['top_products'] ?? []); ?></div>
-            <div class="metric-label">活跃产品</div>
-        </div>
-    </div>
-</div>
-<!-- 图表区域 -->
-<div class="charts-section">
-    <!-- 销售趋势图 -->
-    <div class="chart-container">
-        <div class="chart-header">
-            <h3 class="chart-title">
-                <span class="chart-icon">📈</span>
-                销售趋势
-            </h3>
-            <select id="trendType" style="padding: 0.5rem; border-radius: 6px; border: 1px solid #ddd;">
-                <option value="daily">每日趋势</option>
-                <option value="monthly">月度趋势</option>
-            </select>
-        </div>
-        <canvas id="salesTrendChart" class="chart-canvas"></canvas>
-    </div>
-    
-    <!-- 产品类别分布 -->
-    <div class="chart-container">
-        <div class="chart-header">
-            <h3 class="chart-title">
-                <span class="chart-icon">📊</span>
-                产品类别销售分布
-            </h3>
-        </div>
-        <canvas id="categoryChart" class="chart-canvas"></canvas>
-    </div>
-    
-    <!-- 订单状态分布 -->
-    <div class="chart-container">
-        <div class="chart-header">
-            <h3 class="chart-title">
-                <span class="chart-icon">📋</span>
-                订单状态分布
-            </h3>
-        </div>
-        <canvas id="statusChart" class="chart-canvas"></canvas>
-    </div>
-    
-    <!-- 库存状况 -->
-    <div class="chart-container">
-        <div class="chart-header">
-            <h3 class="chart-title">
-                <span class="chart-icon">📦</span>
-                库存状况分析
-            </h3>
-        </div>
-        <canvas id="stockChart" class="chart-canvas"></canvas>
-    </div>
-</div>
+                
+                <!-- 核心指标 -->
+                <div class="core-metrics">
+                    <div class="metric-card">
+                        <div class="metric-icon">💰</div>
+                        <div class="metric-content">
+                            <div class="metric-value">¥<?php echo number_format($coreMetrics['total_sales'] ?? 0, 2); ?></div>
+                            <div class="metric-label">总销售额</div>
+                            <div class="metric-change positive">
+                                <span>↑</span>
+                                <span>今日：¥<?php echo number_format($coreMetrics['today_sales'] ?? 0, 2); ?></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-icon">📦</div>
+                        <div class="metric-content">
+                            <div class="metric-value"><?php echo number_format($coreMetrics['total_orders'] ?? 0); ?></div>
+                            <div class="metric-label">总订单数</div>
+                            <div class="metric-change positive">
+                                <span>↑</span>
+                                <span>今日：<?php echo number_format($coreMetrics['today_orders'] ?? 0); ?></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-icon">🏷️</div>
+                        <div class="metric-content">
+                            <div class="metric-value"><?php echo number_format($coreMetrics['total_products'] ?? 0); ?></div>
+                            <div class="metric-label">产品总数</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-icon">👥</div>
+                        <div class="metric-content">
+                            <div class="metric-value"><?php echo number_format($coreMetrics['total_customers'] ?? 0); ?></div>
+                            <div class="metric-label">客户总数</div>
+                            <div class="metric-change positive">
+                                <span>↑</span>
+                                <span>今日：<?php echo $realtimeData['today_customers'] ?? 0; ?></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-icon">📊</div>
+                        <div class="metric-content">
+                            <div class="metric-value">¥<?php echo number_format($coreMetrics['avg_order_value'] ?? 0, 2); ?></div>
+                            <div class="metric-label">平均订单价值</div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-icon">🎯</div>
+                        <div class="metric-content">
+                            <div class="metric-value"><?php echo count($productData['top_products'] ?? []); ?></div>
+                            <div class="metric-label">活跃产品</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 图表区域 -->
+                <div class="charts-section">
+                    <!-- 销售趋势图 -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">
+                                <span class="chart-icon">📈</span>
+                                销售趋势
+                            </h3>
+                            <select id="trendType" style="padding: 0.5rem; border-radius: 6px; border: 1px solid #ddd;">
+                                <option value="daily">每日趋势</option>
+                                <option value="monthly">月度趋势</option>
+                            </select>
+                        </div>
+                        <canvas id="salesTrendChart" class="chart-canvas"></canvas>
+                    </div>
+                    
+                    <!-- 产品类别分布 -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">
+                                <span class="chart-icon">📊</span>
+                                产品类别销售分布
+                            </h3>
+                        </div>
+                        <canvas id="categoryChart" class="chart-canvas"></canvas>
+                    </div>
+                    
+                    <!-- 订单状态分布 -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">
+                                <span class="chart-icon">📋</span>
+                                订单状态分布
+                            </h3>
+                        </div>
+                        <canvas id="statusChart" class="chart-canvas"></canvas>
+                    </div>
+                    
+                    <!-- 库存状况 -->
+                    <div class="chart-container">
+                        <div class="chart-header">
+                            <h3 class="chart-title">
+                                <span class="chart-icon">📦</span>
+                                库存状况分析
+                            </h3>
+                        </div>
+                        <canvas id="stockChart" class="chart-canvas"></canvas>
+                    </div>
+                </div>
+                
                 <!-- 数据表格区域 -->
                 <div class="tables-section">
                     <!-- 热销产品TOP 10 -->
@@ -961,7 +907,7 @@ function getRealtimeData($db) {
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($productData['top_products'] as $index => $product): ?>
+                                <?php foreach ($productData['top_products'] ?? [] as $index => $product): ?>
                                 <tr>
                                     <td>
                                         <span class="rank-badge rank-<?php echo $index + 1; ?>">
@@ -999,7 +945,7 @@ function getRealtimeData($db) {
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($customerData['top_customers'] as $index => $customer): ?>
+                                <?php foreach ($customerData['top_customers'] ?? [] as $index => $customer): ?>
                                 <tr>
                                     <td>
                                         <span class="rank-badge rank-<?php echo $index + 1; ?>">
@@ -1186,168 +1132,138 @@ function getRealtimeData($db) {
             }
         }
     });
-        // 订单状态图表
-        const statusCtx = document.getElementById('statusChart').getContext('2d');
-        new Chart(statusCtx, {
-            type: 'pie',
-            data: {
-                labels: statusLabels,
-                datasets: [{
-                    data: statusCounts,
-                    backgroundColor: [
-                        '#ffc107', '#17a2b8', '#28a745', '#dc3545'
-                    ],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: {
-                            padding: 20
-                        }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const label = context.label || '';
-                                const value = context.raw || 0;
-                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-                                return `${label}: ${value} (${percentage}%)`;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        
-        // 库存状况图表
-        const stockCtx = document.getElementById('stockChart').getContext('2d');
-        new Chart(stockCtx, {
-            type: 'bar',
-            data: {
-                labels: stockLabels,
-                datasets: [{
-                    label: '产品数量',
-                    data: stockCounts,
-                    backgroundColor: [
-                        '#dc3545', '#ffc107', '#28a745', '#667eea'
-                    ],
-                    borderColor: [
-                        '#dc3545', '#ffc107', '#28a745', '#667eea'
-                    ],
-                    borderWidth: 1,
-                    borderRadius: 6
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
+    
+    // 订单状态图表
+    const statusCtx = document.getElementById('statusChart').getContext('2d');
+    new Chart(statusCtx, {
+        type: 'pie',
+        data: {
+            labels: statusLabels,
+            datasets: [{
+                data: statusCounts,
+                backgroundColor: [
+                    '#ffc107', '#17a2b8', '#28a745', '#dc3545'
+                ],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: {
+                        padding: 20
                     }
                 },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.raw || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                            return `${label}: ${value} (${percentage}%)`;
                         }
                     }
                 }
             }
-        });
-        
-        // 初始化销售趋势图表
-        createSalesChart('daily');
-        
-        // 趋势类型切换
-        document.getElementById('trendType').addEventListener('change', function() {
-            createSalesChart(this.value);
-        });
-        
-        // 导出报告
-        document.getElementById('exportBtn').addEventListener('click', function() {
-            const startDate = document.getElementById('start_date').value;
-            const endDate = document.getElementById('end_date').value;
-            
-            // 创建导出数据
-            const exportData = {
-                period: `${startDate} 至 ${endDate}`,
-                coreMetrics: <?php echo json_encode($coreMetrics); ?>,
-                productData: <?php echo json_encode($productData); ?>,
-                orderData: <?php echo json_encode($orderData); ?>,
-                generated_at: new Date().toLocaleString('zh-CN')
-            };
-            
-            // 创建下载链接
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
-            const downloadAnchor = document.createElement('a');
-            downloadAnchor.setAttribute("href", dataStr);
-            downloadAnchor.setAttribute("download", `数据统计报告_${startDate}_${endDate}.json`);
-            document.body.appendChild(downloadAnchor);
-            downloadAnchor.click();
-            document.body.removeChild(downloadAnchor);
-        });
-        
-        // 设置日期限制
-        const startDateInput = document.getElementById('start_date');
-        const endDateInput = document.getElementById('end_date');
-        const today = new Date().toISOString().split('T')[0];
-        
-        startDateInput.max = today;
-        endDateInput.max = today;
-        
-        startDateInput.addEventListener('change', function() {
-            endDateInput.min = this.value;
-        });
-        
-        endDateInput.addEventListener('change', function() {
-            startDateInput.max = this.value;
-        });
-        
-        // 页面刷新定时器（每5分钟刷新一次数据）
-        setInterval(() => {
-            const refreshBtn = document.createElement('button');
-            refreshBtn.style.cssText = `
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                background: #28a745;
-                color: white;
-                border: none;
-                border-radius: 50%;
-                width: 60px;
-                height: 60px;
-                font-size: 1.5rem;
-                cursor: pointer;
-                box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
-                z-index: 1000;
-                transition: all 0.3s ease;
-            `;
-            refreshBtn.innerHTML = '🔄';
-            refreshBtn.title = '刷新数据';
-            refreshBtn.onclick = function() {
-                this.style.transform = 'rotate(360deg)';
-                setTimeout(() => {
-                    location.reload();
-                }, 300);
-            };
-            
-            document.body.appendChild(refreshBtn);
-        }, 5 * 60 * 1000); // 5分钟
-        
-        // 图表自适应
-        window.addEventListener('resize', function() {
-            if (salesChart) {
-                salesChart.resize();
+        }
+    });
+    
+    // 库存状况图表
+    const stockCtx = document.getElementById('stockChart').getContext('2d');
+    new Chart(stockCtx, {
+        type: 'bar',
+        data: {
+            labels: stockLabels,
+            datasets: [{
+                label: '产品数量',
+                data: stockCounts,
+                backgroundColor: [
+                    '#dc3545', '#ffc107', '#28a745', '#667eea'
+                ],
+                borderColor: [
+                    '#dc3545', '#ffc107', '#28a745', '#667eea'
+                ],
+                borderWidth: 1,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
             }
-        });
-    </script>
+        }
+    });
+    
+    // 初始化销售趋势图表
+    createSalesChart('daily');
+    
+    // 趋势类型切换
+    document.getElementById('trendType').addEventListener('change', function() {
+        createSalesChart(this.value);
+    });
+    
+    // 导出报告
+    document.getElementById('exportBtn').addEventListener('click', function() {
+        const startDate = document.getElementById('start_date').value;
+        const endDate = document.getElementById('end_date').value;
+        
+        // 创建导出数据
+        const exportData = {
+            period: `${startDate} 至 ${endDate}`,
+            coreMetrics: <?php echo json_encode($coreMetrics); ?>,
+            productData: <?php echo json_encode($productData); ?>,
+            orderData: <?php echo json_encode($orderData); ?>,
+            generated_at: new Date().toLocaleString('zh-CN')
+        };
+        
+        // 创建下载链接
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", `数据统计报告_${startDate}_${endDate}.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        document.body.removeChild(downloadAnchor);
+    });
+    
+    // 设置日期限制
+    const startDateInput = document.getElementById('start_date');
+    const endDateInput = document.getElementById('end_date');
+    const today = new Date().toISOString().split('T')[0];
+    
+    startDateInput.max = today;
+    endDateInput.max = today;
+    
+    startDateInput.addEventListener('change', function() {
+        endDateInput.min = this.value;
+    });
+    
+    endDateInput.addEventListener('change', function() {
+        startDateInput.max = this.value;
+    });
+    
+    // 图表自适应
+    window.addEventListener('resize', function() {
+        if (salesChart) {
+            salesChart.resize();
+        }
+    });
+</script>
 </body>
 </html>
